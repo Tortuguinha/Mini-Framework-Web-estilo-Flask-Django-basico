@@ -16,6 +16,7 @@ class Request:
         self.headers = {}           # Dicionário de cabeçalhos
         self.body = None            # Corpo cru da requisição
         self.query_params = {}      # Parâmetros da URL (ex.: ?foo=bar)
+        self.form = {}              # Parâmetros enviados via form POST
         self.cookies = {}           # Cookies enviados pelo cliente
         
         # Processa a requisição
@@ -40,7 +41,7 @@ class Request:
         # Processa query params (ex.: /about?lang=pt&foo=bar)
         parsed = urlparse(raw_path)
         self.path = parsed.path  # só o caminho puro (/about)
-        self.query_params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+        self.query_params = self._parse_query(parsed.query)
 
         # Separa cabeçalhos e corpo
         header_lines = []
@@ -68,6 +69,15 @@ class Request:
         if "Cookie" in self.headers:
             self.cookies = self._parse_cookies(self.headers["Cookie"])
 
+        # Processa form data se POST
+        if self.method == "POST" and "application/x-www-form-urlencoded" in self.headers.get("Content-Type", ""):
+            self.form = self._parse_form(self.body)
+        else:
+            self.form = {}
+
+    # =========================
+    # 🔹 Helpers privados
+    # =========================
     def _parse_cookies(self, cookie_header: str):
         """Transforma o header Cookie em dicionário"""
         cookies = {}
@@ -78,6 +88,17 @@ class Request:
                 cookies[key] = value
         return cookies
 
+    def _parse_query(self, query_string: str):
+        """Transforma query string em dicionário"""
+        return {k: v[0] if len(v) == 1 else v for k, v in parse_qs(query_string).items()}
+
+    def _parse_form(self, body: str):
+        """Transforma form-urlencoded em dicionário"""
+        return {k: v[0] if len(v) == 1 else v for k, v in parse_qs(body).items()}
+
+    # =========================
+    # 🔹 JSON helper público
+    # =========================
     def json(self):
         """
         Tenta converter o corpo da requisição em JSON.
