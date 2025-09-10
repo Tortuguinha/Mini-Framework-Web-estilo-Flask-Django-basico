@@ -1,6 +1,7 @@
 import socket  # Biblioteca padrão do Python para comunicação de rede (TCP/UDP)
 from .response import Response  # Classe para facilitar a criação de respostas HTTP
-from .request import Request  # Classe para facilitar o parsing de requisições HTTP
+from .request import Request    # Classe para facilitar o parsing de requisições HTTP
+
 
 class App:
     def __init__(self, host="localhost", port=8000):
@@ -13,19 +14,26 @@ class App:
         self.port = port
         self.routes = {}  # Dicionário que guarda as rotas registradas (ex.: "/" -> função)
 
+    # =========================
+    # 🎯 Decorador de rotas
+    # =========================
     def route(self, path):
         """
         Decorador para registrar uma rota.
         Exemplo de uso:
             @app.route("/")
-            def home():
-                return "Hello!"
+            def home(req, res):
+                res.body = "Hello!"
+                # ou return Response.text("Hello")
         """
         def decorator(func):
             self.routes[path] = func  # Salva a função associada ao caminho
             return func
         return decorator
 
+    # =========================
+    # 🚀 Servidor Socket
+    # =========================
     def start(self):
         """
         Inicia o servidor web e fica escutando conexões HTTP.
@@ -57,6 +65,9 @@ class App:
         """Alias para start() - para manter sintaxe parecida com Flask/Django."""
         self.start()
 
+    # =========================
+    # 🔎 Parsing de rota
+    # =========================
     def _parse_path(self, request):
         """
         Extrai o caminho da URL (path) da requisição HTTP.
@@ -69,16 +80,32 @@ class App:
         except IndexError:
             return "/"  # Se não conseguir extrair, retorna "/"
 
+    # =========================
+    # ⚙️ Processamento de requisições
+    # =========================
     def handle_request(self, request_text):
-        """Processa a requisição e devolve uma resposta HTTP"""
+        """
+        Processa a requisição e devolve uma resposta HTTP.
+        Agora suporta dois estilos:
+        1) Função de rota modifica o `res` recebido
+        2) Função de rota retorna um `Response`
+        """
         req = Request(request_text)   # Cria o objeto de requisição
         res = Response()              # Cria o objeto de resposta "em branco"
         path = req.path
 
         if path in self.routes:
-            # Passa req e res para a função da rota
-            self.routes[path](req, res)
+            # Executa a função da rota
+            result = self.routes[path](req, res)
+
+            if isinstance(result, Response):
+                # Caso 1: a função retornou diretamente um Response
+                res = result
+            else:
+                # Caso 2: a função apenas modificou o res existente
+                pass
         else:
+            # Rota não encontrada -> 404
             res = Response(body="<h1>404 - Page Not Found</h1>", status=404)
 
         # Constrói a resposta HTTP final

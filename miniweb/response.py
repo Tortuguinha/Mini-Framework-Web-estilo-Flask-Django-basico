@@ -1,6 +1,5 @@
 import json
 
-
 class Response:
     def __init__(self, body: str = "", status: int = 200, headers: dict = None):
         """
@@ -13,24 +12,35 @@ class Response:
         self.status = status
         self.headers = headers if headers is not None else {}
 
-        # Header padrão se não for definido
+        # ✅ Garante que sempre exista um Content-Type (default = HTML)
         if "Content-Type" not in self.headers:
             self.headers["Content-Type"] = "text/html; charset=utf-8"
 
+    # ========================
+    # 🔧 Métodos utilitários
+    # ========================
     def set_header(self, key: str, value: str):
-        """Define ou sobrescreve um header."""
+        """Define ou sobrescreve um header HTTP."""
         self.headers[key] = value
 
     def set_status(self, code: int, message: str = None):
-        """Define o código de status da resposta."""
+        """
+        Define o código de status HTTP da resposta.
+        - code: número (ex.: 200, 404)
+        - message: texto opcional (ex.: "All Good")
+        """
         self.status = code
         if message:
+            # Guarda mensagem customizada se o dev quiser sobrescrever
             self._status_message_override = message
         else:
             self._status_message_override = None
 
     def _get_status_message(self):
-        """Retorna a mensagem textual para o código HTTP."""
+        """
+        Retorna a mensagem textual padrão de acordo com o código de status.
+        Exemplo: 200 -> "OK"
+        """
         status_messages = {
             200: "OK",
             201: "Created",
@@ -42,11 +52,15 @@ class Response:
             500: "Internal Server Error",
         }
         return (
+            # Usa mensagem customizada se existir
             self._status_message_override
             if hasattr(self, "_status_message_override") and self._status_message_override
             else status_messages.get(self.status, "Unknown Status")
         )
 
+    # ========================
+    # 🚀 Integração WSGI
+    # ========================
     def to_wsgi(self):
         """
         Retorna no formato esperado por servidores WSGI.
@@ -56,6 +70,9 @@ class Response:
         headers_list = [(key, value) for key, value in self.headers.items()]
         return status_str, headers_list, [self.body.encode("utf-8")]
 
+    # ========================
+    # 📨 Monta resposta crua (sockets)
+    # ========================
     def build(self) -> str:
         """
         Constrói a resposta HTTP bruta (string) para enviar via socket.
@@ -64,25 +81,34 @@ class Response:
         headers_str = "\r\n".join(f"{k}: {v}" for k, v in self.headers.items())
         return f"{status_line}\r\n{headers_str}\r\n\r\n{self.body}"
 
-    # ---------- Helpers ----------
+    # ========================
+    # 🎯 Atalhos helpers
+    # ========================
     @staticmethod
     def json(data, status: int = 200):
-        """Cria uma resposta JSON."""
-        body = json.dumps(data, ensure_ascii=False)
+        """
+        Helper para criar resposta JSON.
+        - data: dict ou lista (será serializado com json.dumps)
+        """
+        body = json.dumps(data, ensure_ascii=False)  # suporta acentos
         response = Response(body=body, status=status)
         response.set_header("Content-Type", "application/json; charset=utf-8")
         return response
 
     @staticmethod
     def html(content: str, status: int = 200):
-        """Cria uma resposta HTML."""
+        """
+        Helper para criar resposta HTML.
+        """
         response = Response(body=content, status=status)
         response.set_header("Content-Type", "text/html; charset=utf-8")
         return response
 
     @staticmethod
     def text(content: str, status: int = 200):
-        """Cria uma resposta de texto puro."""
+        """
+        Helper para criar resposta em texto puro.
+        """
         response = Response(body=content, status=status)
         response.set_header("Content-Type", "text/plain; charset=utf-8")
         return response
