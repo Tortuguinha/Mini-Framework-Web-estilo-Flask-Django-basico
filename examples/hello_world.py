@@ -33,25 +33,17 @@ def render_template(filename, **context):
 # ==============================
 @app.route("/", methods=["GET"])
 def home(req, res):
-    """
-    Página inicial (GET) usando template
-    """
     res.body = render_template("home.html")
     res.set_header("Content-Type", "text/html; charset=utf-8")
 
-
 @app.route("/about", methods=["GET"])
 def about(req, res):
-    """
-    Página sobre (GET) usando template com placeholders
-    """
     res.body = render_template(
         "about.html",
         framework_name="MiniWeb",
         framework_desc="Framework leve e rápido em Python"
     )
     res.set_header("Content-Type", "text/html; charset=utf-8")
-
 
 # ==============================
 # 🔵 Estilo 2: retornando Response
@@ -60,24 +52,18 @@ def about(req, res):
 def api(req, res):
     return Response.json({"message": "Hello API!", "ok": True})
 
-
 @app.route("/plaintext", methods=["GET"])
 def plaintext(req, res):
     return Response.text("MiniWeb rodando em modo texto simples ✅")
 
-
 @app.route("/html", methods=["GET"])
 def custom_html(req, res):
-    """
-    Retorna HTML usando template custom.html com placeholders
-    """
     content = render_template(
         "custom.html",
         framework_name="MiniWeb",
         framework_desc="Framework leve e rápido em Python"
     )
     return Response.html(content)
-
 
 # ==============================
 # 📬 Exemplo POST e form data
@@ -86,7 +72,6 @@ def custom_html(req, res):
 def submit_form(req, res):
     name = req.form.get("name") or req.query.get("name") or "Visitante"
     return Response.json({"message": f"Olá, {name}!", "status": "sucesso"})
-
 
 # ==============================
 # 📬 Exemplo múltiplos métodos
@@ -99,6 +84,33 @@ def multi_method(req, res):
         data = req.form.get("data", "nenhum dado")
         return Response.json({"mensagem": f"POST recebido: {data}"})
 
+# ==============================
+# 📤 Upload de arquivos
+# ==============================
+@app.route("/upload", methods=["GET", "POST"])
+def upload(req, res):
+    if req.method == "GET":
+        content = render_template("upload.html")
+        return Response.html(content)
+    elif req.method == "POST":
+        if "file" in req.files:
+            file_item = req.files["file"]
+            filename = file_item["filename"]
+            file_content = file_item["content"]
+
+            # Cria a pasta uploads se não existir
+            upload_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
+            os.makedirs(upload_dir, exist_ok=True)
+            file_path = os.path.join(upload_dir, filename)
+            with open(file_path, "wb") as f:
+                f.write(file_content)
+
+            return Response.text(
+                f"Arquivo '{filename}' recebido com sucesso! "
+                f"Tamanho: {len(file_content)} bytes"
+            )
+        else:
+            return Response.text("Nenhum arquivo enviado!")
 
 # ==============================
 # ▶️ Inicialização do servidor

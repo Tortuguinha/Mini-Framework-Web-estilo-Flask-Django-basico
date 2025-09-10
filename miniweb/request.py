@@ -1,15 +1,13 @@
 import json
 from urllib.parse import urlparse, parse_qs
+import re
 
 class Request:
     def __init__(self, request_text: str):
         """
         Representa uma requisição HTTP recebida pelo servidor.
-        - request_text: texto bruto da requisição recebida pelo socket
         """
         self.request_text = request_text
-        
-        # Atributos principais da requisição
         self.method = None          # Método HTTP (GET, POST, etc.)
         self.path = None            # Caminho da rota (/about, /api, etc.)
         self.http_version = None    # Versão do protocolo HTTP
@@ -17,14 +15,14 @@ class Request:
         self.body = None            # Corpo cru da requisição
         self.query_params = {}      # Parâmetros da URL (ex.: ?foo=bar)
         self.form = {}              # Parâmetros enviados via form POST
+        self.files = {}             # Arquivos enviados via form multipart
         self.cookies = {}           # Cookies enviados pelo cliente
-        
+
         # Processa a requisição
         self.parse_request()
 
     def parse_request(self):
         """Faz o parsing da requisição HTTP bruta"""
-        # Divide a requisição em linhas
         lines = self.request_text.split("\r\n")
 
         # Primeira linha: método, path e versão do HTTP
@@ -32,15 +30,13 @@ class Request:
         if len(request_line) == 3:
             self.method, raw_path, self.http_version = request_line
         else:
-            # fallback se versão não foi enviada
             self.method, raw_path = request_line[0], request_line[1]
             self.http_version = "HTTP/1.1"
+        self.method = self.method.upper()
 
-        self.method = self.method.upper()  # Normaliza o método (GET, POST, ...)
-
-        # Processa query params (ex.: /about?lang=pt&foo=bar)
+        # Processa query params
         parsed = urlparse(raw_path)
-        self.path = parsed.path  # só o caminho puro (/about)
+        self.path = parsed.path
         self.query_params = self._parse_query(parsed.query)
 
         # Separa cabeçalhos e corpo
@@ -62,24 +58,61 @@ class Request:
                 key, value = header.split(":", 1)
                 self.headers[key.strip()] = value.strip()
 
-        # Junta corpo em string (pode ser JSON ou outro formato)
+        # Corpo cru
         self.body = "\n".join(body_lines)
 
-        # Processa cookies, se existirem
+        # Cookies
         if "Cookie" in self.headers:
             self.cookies = self._parse_cookies(self.headers["Cookie"])
 
-        # Processa form data se POST
-        if self.method == "POST" and "application/x-www-form-urlencoded" in self.headers.get("Content-Type", ""):
-            self.form = self._parse_form(self.body)
-        else:
-            self.form = {}
+        # ================================
+        # Processa form data e arquivos
+        # ================================
+        content_type = self.headers.get("Content-Type", "")
+        if self.method == "POST":
+            if "application/x-www-form-urlencoded" in content_type:
+                self.form = self._parse_form(self.body)
+            elif "multipart/form-data" in content_type:
+                self._parse_multipart(self.body, content_type)
+
+    # =========================
+    # 🔹 Multipart parser simples
+    # =========================
+    def _parse_multipart(self, body: str, content_type: str):
+        """Parse multipart/form-data sem usar cgi"""
+        # Extrai boundary
+        m = re.search(r'boundary=(.+)', content_type)
+        if not m:
+            return
+        boundary = "--" + m.group(1)
+        parts = body.split(boundary)
+        for part in parts:
+            part = part.strip()
+            if not part or part == "--":
+                continue
+            headers, _, content = part.partition("\r\n\r\n")
+            content = content.rstrip("\r\n")
+            header_lines = headers.split("\r\n")
+            disposition = {}
+            for h in header_lines:
+                if h.lower().startswith("content-disposition"):
+                    m = re.findall(r'(\w+)="([^"]+)"', h)
+                    for k, v in m:
+                        disposition[k] = v
+            name = disposition.get("name")
+            filename = disposition.get("filename")
+            if filename:
+                self.files[name] = {
+                    "filename": filename,
+                    "content": content.encode("utf-8")
+                }
+            elif name:
+                self.form[name] = content
 
     # =========================
     # 🔹 Helpers privados
     # =========================
     def _parse_cookies(self, cookie_header: str):
-        """Transforma o header Cookie em dicionário"""
         cookies = {}
         parts = cookie_header.split(";")
         for part in parts:
@@ -89,21 +122,15 @@ class Request:
         return cookies
 
     def _parse_query(self, query_string: str):
-        """Transforma query string em dicionário"""
         return {k: v[0] if len(v) == 1 else v for k, v in parse_qs(query_string).items()}
 
     def _parse_form(self, body: str):
-        """Transforma form-urlencoded em dicionário"""
         return {k: v[0] if len(v) == 1 else v for k, v in parse_qs(body).items()}
 
     # =========================
     # 🔹 JSON helper público
     # =========================
     def json(self):
-        """
-        Tenta converter o corpo da requisição em JSON.
-        Retorna {} se não for possível.
-        """
         try:
             return json.loads(self.body) if self.body else {}
         except json.JSONDecodeError:
